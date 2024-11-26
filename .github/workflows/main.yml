@@ -3,62 +3,71 @@ name: dt-infra-pillar-pipeline
 on:
   push:
     branches:
-      - main  # Trigger on push to the main branch, adjust as needed.
+      - main
   pull_request:
     branches:
-      - main  # Trigger on pull request to the main branch, adjust as needed.
+      - main
 
 jobs:
   terraform:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      # Step 1: Checkout the code
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-    - name: Set up Terraform
-      uses: hashicorp/setup-terraform@v2
-      with:
-        terraform_version: 1.5.0  # Specify your Terraform version here.
+      # Step 2: Set up Terraform
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v1
 
-    - name: Set up AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v1
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
+      # Step 3: Set up AWS Credentials (from GitHub Secrets)
+      - name: Set up AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1  # Modify the region as per your setup
 
-    - name: Terraform Format Check
-      run: terraform fmt -check -diff
+      # Step 4: Install Checkov (for vulnerability scanning)
+      - name: Install Checkov
+        run: |
+          pip install checkov
 
-    - name: Terraform Validate
-      run: terraform validate
+      # Step 5: Run Checkov Vulnerability Scan (for Terraform code)
+      - name: Run Checkov Vulnerability Scan
+        run: |
+          checkov -d . --quiet
 
-    - name: Install TFLint (Optional)
-      run: |
-        curl -LO https://github.com/terraform-linters/tflint/releases/download/v0.35.0/tflint-linux-amd64.zip
-        unzip tflint-linux-amd64.zip
-        sudo mv tflint /usr/local/bin/
+      # Step 6: Terraform Initialization
+      - name: Terraform Init
+        run: terraform init
 
-    - name: Terraform Linting (Optional)
-      run: tflint
+      # Step 7: Terraform Validation
+      - name: Terraform Validate
+        run: terraform validate
 
-    - name: Install Checkov (Vulnerability Scanning)
-      run: |
-        curl -sSL https://github.com/bridgecrewio/checkov/releases/download/v2.2.7/checkov_2.2.7-linux-x86_64.tar.gz | tar -xz -C /usr/local/bin
+      # Step 8: Terraform Format Check (optional)
+      - name: Check Terraform Format
+        run: terraform fmt -check -diff
 
-    - name: Checkov Vulnerability Check
-      run: checkov -d .  # Scans the entire repository for Terraform vulnerabilities
+      # Step 9: Terraform Plan
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
 
-    - name: Terraform Plan
-      run: terraform plan -out=tfplan
+      # Step 10: Terraform Apply (only on main branch)
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main'
+        run: terraform apply -auto-approve tfplan
 
-    - name: Terraform Plan Approval (Manual)
-      if: ${{ github.event_name == 'pull_request' }}
-      run: echo "Manual approval required to proceed."
+      # Step 11: Post-Deployment Validation (optional)
+      - name: Run Post-Deployment Tests
+        run: |
+          echo "Running post-deployment tests"
+          # Example: Check if specific resources are created
+          # Use AWS CLI or API to check resource status (e.g., check EC2 instances, S3 buckets)
+          
+          # For example, check EC2 instances in the region
+          aws ec2 describe-instances --query "Reservations[].Instances[].InstanceId"
 
-    - name: Terraform Apply
-      run: terraform apply -auto-approve tfplan
-
-    - name: Terraform Test (Optional)
-      run: terraform output  # Add additional test commands as needed.
+          # You can extend this with checks for other AWS resources or status codes
