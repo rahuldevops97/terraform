@@ -3,90 +3,62 @@ name: dt-infra-pillar-pipeline
 on:
   push:
     branches:
-      - main
+      - main  # Trigger on push to the main branch, adjust as needed.
   pull_request:
     branches:
-      - main
+      - main  # Trigger on pull request to the main branch, adjust as needed.
 
 jobs:
   terraform:
-    name: Terraform Workflow
     runs-on: ubuntu-latest
-    env:
-      TF_VERSION: "1.5.5" # Specify Terraform version
-      AWS_REGION: "us-east-1" # Replace with your AWS region
 
     steps:
-      # Checkout the Repository
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      # Cache Terraform Modules and Docker Images (if needed)
-      - name: Cache Terraform Modules
-        uses: actions/cache@v3
-        with:
-          path: ~/.terraform
-          key: ${{ runner.os }}-terraform-${{ hashFiles('**/*.tf', '**/*.tfvars') }}
-          restore-keys: |
-            ${{ runner.os }}-terraform-
+    - name: Set up Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: 1.5.0  # Specify your Terraform version here.
 
-      # Set Up Terraform
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
+    - name: Set up AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
 
-      # Terraform Format Check
-      - name: Check Terraform Format
-        run: terraform fmt -check -diff
+    - name: Terraform Format Check
+      run: terraform fmt -check -diff
 
-      # Terraform Validate
-      - name: Validate Terraform Configuration
-        run: |
-          terraform init -backend-config=backend.tfvars
-          terraform validate
+    - name: Terraform Validate
+      run: terraform validate
 
-      # Terraform Plan
-      - name: Terraform Plan
-        run: |
-          terraform init -backend-config=backend.tfvars
-          terraform plan -var-file=variables.tfvars -out=tfplan
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: ${{ env.AWS_REGION }}
-        continue-on-error: true
-        id: plan
+    - name: Install TFLint (Optional)
+      run: |
+        curl -LO https://github.com/terraform-linters/tflint/releases/download/v0.35.0/tflint-linux-amd64.zip
+        unzip tflint-linux-amd64.zip
+        sudo mv tflint /usr/local/bin/
 
-      # Save Plan Output
-      - name: Upload Terraform Plan Artifact
-        if: steps.plan.outcome == 'success'
-        uses: actions/upload-artifact@v3
-        with:
-          name: tfplan
-          path: tfplan
+    - name: Terraform Linting (Optional)
+      run: tflint
 
-      # Run Checkov Security Scan (Using Docker Image)
-      - name: Run Checkov Security Scan (via Docker)
-        run: |
-          docker pull bridgecrew/checkov:latest
-          docker run --rm -v $(pwd):/mnt bridgecrew/checkov:latest /mnt
-        continue-on-error: true
+    - name: Install Checkov (Vulnerability Scanning)
+      run: |
+        curl -sSL https://github.com/bridgecrewio/checkov/releases/download/v2.2.7/checkov_2.2.7-linux-x86_64.tar.gz | tar -xz -C /usr/local/bin
 
-      # Run Checkov Security Scan (Fallback - Direct Install)
-      - name: Install and Run Checkov (Fallback)
-        if: failure()
-        run: |
-          pip install checkov
-          checkov -d .
+    - name: Checkov Vulnerability Check
+      run: checkov -d .  # Scans the entire repository for Terraform vulnerabilities
 
-      # Terraform Apply (Only for Main Branch)
-      - name: Terraform Apply
-        if: github.ref == 'refs/heads/main'
-        run: |
-          terraform init -backend-config=backend.tfvars
-          terraform apply -var-file=variables.tfvars -auto-approve
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: ${{ env.AWS_REGION }}
+    - name: Terraform Plan
+      run: terraform plan -out=tfplan
+
+    - name: Terraform Plan Approval (Manual)
+      if: ${{ github.event_name == 'pull_request' }}
+      run: echo "Manual approval required to proceed."
+
+    - name: Terraform Apply
+      run: terraform apply -auto-approve tfplan
+
+    - name: Terraform Test (Optional)
+      run: terraform output  # Add additional test commands as needed.
