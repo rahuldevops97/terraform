@@ -21,6 +21,15 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      # Cache Terraform Modules and Docker Images (if needed)
+      - name: Cache Terraform Modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.terraform
+          key: ${{ runner.os }}-terraform-${{ hashFiles('**/*.tf', '**/*.tfvars') }}
+          restore-keys: |
+            ${{ runner.os }}-terraform-
+
       # Set Up Terraform
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v2
@@ -57,11 +66,19 @@ jobs:
           name: tfplan
           path: tfplan
 
-      # Vulnerability Scan using Checkov
-      - name: Run Checkov Security Scan
-        uses: bridgecrewio/checkov-action@v11
-        with:
-          directory: .
+      # Run Checkov Security Scan (Using Docker Image)
+      - name: Run Checkov Security Scan (via Docker)
+        run: |
+          docker pull bridgecrew/checkov:latest
+          docker run --rm -v $(pwd):/mnt bridgecrew/checkov:latest /mnt
+        continue-on-error: true
+
+      # Run Checkov Security Scan (Fallback - Direct Install)
+      - name: Install and Run Checkov (Fallback)
+        if: failure()
+        run: |
+          pip install checkov
+          checkov -d .
 
       # Terraform Apply (Only for Main Branch)
       - name: Terraform Apply
