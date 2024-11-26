@@ -8,6 +8,13 @@ on:
     branches:
       - main
 
+# Define specific permissions required for the workflow
+permissions:
+  contents: read      # For checking out code
+  id-token: write     # For generating ID tokens if required (adjust based on your need)
+  actions: read       # Limit permissions for actions to read-only
+  # Add other permissions as needed based on your workflow's requirements
+
 jobs:
   terraform:
     runs-on: ubuntu-latest
