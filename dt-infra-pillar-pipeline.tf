@@ -56,3 +56,15 @@ resource "aws_iam_policy_attachment" "vpc_flow_logs_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonVPCFlowLogsRole"
 }
 
+
+resource "aws_instance" "test_instance" {
+  ami           = "ami-0c55b159cbfafe1f0" # Replace with a valid AMI ID
+  instance_type = "t2.micro"
+
+  security_groups = [aws_security_group.default.name]
+
+  tags = {
+    Name = "Test Instance"
+  }
+}
+
