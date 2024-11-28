@@ -2,6 +2,9 @@
 resource "aws_vpc" "virtual_network" {
   cidr_block = "10.0.0.0/16"
 
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+
   tags = {
     Name = "My VPC"
   }
@@ -33,6 +36,22 @@ resource "aws_security_group" "default" {
 # KMS Key for CloudWatch Logs
 resource "aws_kms_key" "cloudwatch_key" {
   description = "KMS key for CloudWatch Log Group"
+
+  key_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = {
+          AWS = "*"
+        }
+        Action    = "kms:*"
+        Resource  = "*"
+      }
+    ]
+  })
+
+  enable_key_rotation = true
 }
 
 # CloudWatch Log Group for VPC Flow Logs
@@ -101,7 +120,7 @@ resource "aws_instance" "test_instance" {
   instance_type = "t3.micro"              # EBS-optimized instance type
   monitoring    = true                    # Enable detailed monitoring
 
-  security_groups = [aws_security_group.default.name]
+  security_groups      = [aws_security_group.default.name]
   iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
 
   metadata_options {
